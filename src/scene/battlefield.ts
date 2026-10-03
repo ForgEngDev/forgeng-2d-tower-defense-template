@@ -17,7 +17,7 @@ export const PADS: readonly (readonly [number, number])[] = [
   [30, -82], [72, 72], [116, -34], [164, 24],
 ];
 
-interface Enemy { readonly index: number; x: number; y: number; pathIndex: number; hp: number; speed: number; bounty: number; active: boolean; }
+interface Enemy { readonly index: number; x: number; y: number; pathIndex: number; hp: number; speed: number; bounty: number; active: boolean; revealTicks: number; }
 interface Tower { readonly index: number; level: number; cooldown: number; active: boolean; }
 interface Projectile { readonly index: number; x: number; y: number; vx: number; vy: number; damage: number; ttl: number; active: boolean; }
 
@@ -36,7 +36,7 @@ export class Battlefield {
   private spawnTimer = 0;
 
   public constructor() {
-    for (let index = 0; index < MAX_ENEMIES; index += 1) this.enemies.push({ index, x: OFFSCREEN[0], y: OFFSCREEN[1], pathIndex: 1, hp: 1, speed: 0.4, bounty: 8, active: false });
+    for (let index = 0; index < MAX_ENEMIES; index += 1) this.enemies.push({ index, x: OFFSCREEN[0], y: OFFSCREEN[1], pathIndex: 1, hp: 1, speed: 0.4, bounty: 8, active: false, revealTicks: 0 });
     for (let index = 0; index < PADS.length; index += 1) this.towers.push({ index, level: 0, cooldown: 0, active: false });
     for (let index = 0; index < MAX_PROJECTILES; index += 1) this.projectiles.push({ index, x: OFFSCREEN[0], y: OFFSCREEN[1], vx: 0, vy: 0, damage: 1, ttl: 0, active: false });
   }
@@ -64,7 +64,13 @@ export class Battlefield {
       if (this.spawnTimer <= 0) { this.spawnEnemy(); this.waveRemaining -= 1; this.spawnTimer = Math.max(16, 43 - this.wave * 2); }
     }
     for (const enemy of this.enemies) {
-      if (!enemy.active) continue;
+      if (!enemy.active) {
+        if (enemy.revealTicks > 0) {
+          enemy.revealTicks -= 1;
+          if (enemy.revealTicks === 0) enemy.active = true;
+        }
+        continue;
+      }
       const target = PATH[enemy.pathIndex];
       const dx = target[0] - enemy.x;
       const dy = target[1] - enemy.y;
@@ -136,12 +142,12 @@ export class Battlefield {
   public getUpgradeCost(index: number): number { return 45 + this.towers[index].level * 25; }
 
   private spawnEnemy(): void {
-    const enemy = this.enemies.find((candidate) => !candidate.active);
+    const enemy = this.enemies.find((candidate) => !candidate.active && candidate.revealTicks === 0);
     if (!enemy) return;
     enemy.x = PATH[0][0]; enemy.y = PATH[0][1]; enemy.pathIndex = 1;
     enemy.hp = 2 + Math.floor(this.wave * 1.45);
     enemy.speed = 0.34 + Math.min(0.35, this.wave * 0.026) + this.nextRandom() * 0.05;
-    enemy.bounty = 7 + this.wave; enemy.active = true;
+    enemy.bounty = 7 + this.wave; enemy.active = false; enemy.revealTicks = 2;
   }
 
   private fire(origin: readonly [number, number], target: Enemy, damage: number): void {
@@ -163,8 +169,8 @@ export class Battlefield {
     return result;
   }
 
-  private activeEnemyCount(): number { return this.enemies.reduce((count, enemy) => count + (enemy.active ? 1 : 0), 0); }
-  private hideEnemy(enemy: Enemy): void { enemy.active = false; enemy.x = OFFSCREEN[0]; enemy.y = OFFSCREEN[1]; }
+  private activeEnemyCount(): number { return this.enemies.reduce((count, enemy) => count + (enemy.active || enemy.revealTicks > 0 ? 1 : 0), 0); }
+  private hideEnemy(enemy: Enemy): void { enemy.active = false; enemy.revealTicks = 0; enemy.x = OFFSCREEN[0]; enemy.y = OFFSCREEN[1]; }
   private hideProjectile(projectile: Projectile): void { projectile.active = false; projectile.x = OFFSCREEN[0]; projectile.y = OFFSCREEN[1]; }
   private nextRandom(): number { this.randomState = (1664525 * this.randomState + 1013904223) >>> 0; return this.randomState / 0xffffffff; }
 }
