@@ -5,10 +5,12 @@ const MAX_ENEMIES = 40;
 const MAX_PROJECTILES = 36;
 const OFFSCREEN: readonly [number, number] = [-900, -900];
 
-export const PATH: readonly (readonly [number, number])[] = [
+const PATH_CONTROL_POINTS: readonly (readonly [number, number])[] = [
   [-190, 66], [-142, 66], [-112, 25], [-58, 25], [-22, -42],
   [42, -42], [72, 18], [122, 18], [150, -24], [190, -24],
 ];
+
+export const PATH: readonly (readonly [number, number])[] = sampleCatmullRom(PATH_CONTROL_POINTS, 10);
 
 export const PADS: readonly (readonly [number, number])[] = [
   [-164, 22], [-108, 76], [-72, -18], [-18, 32],
@@ -175,14 +177,19 @@ function squaredDistance(a: readonly [number, number], b: readonly [number, numb
 
 function createMapSprites() {
   const sprites = [sprite2d({ id: "template.2d:background", entity: "template.2d:background-entity", layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [640, 360], tint: [0.035, 0.075, 0.09, 1], transform: { position: [0, 0], rotation: 0, scale: [1, 1] } })];
+  const segments: Array<{ readonly length: number; readonly position: readonly [number, number]; readonly rotation: number }> = [];
   for (let index = 0; index < PATH.length - 1; index += 1) {
-    const a = PATH[index]; const b = PATH[index + 1]; const dx = b[0] - a[0]; const dy = b[1] - a[1]; const length = Math.hypot(dx, dy) + 3;
+    const a = PATH[index]; const b = PATH[index + 1]; const dx = b[0] - a[0]; const dy = b[1] - a[1]; const length = Math.hypot(dx, dy) + 6;
     const position: readonly [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; const rotation = Math.atan2(dy, dx);
-    sprites.push(sprite2d({ id: `template.2d:path-border-${index}`, entity: `template.2d:path-border-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [length, 27], tint: [0.2, 0.55, 0.5, 0.56], transform: { position, rotation, scale: [1, 1] } }));
-    sprites.push(sprite2d({ id: `template.2d:path-${index}`, entity: `template.2d:path-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [length, 20], tint: [0.13, 0.17, 0.22, 1], transform: { position, rotation, scale: [1, 1] } }));
+    segments.push({ length, position, rotation });
   }
-  for (let index = 1; index < PATH.length - 1; index += 1) {
-    sprites.push(sprite2d({ id: `template.2d:path-joint-${index}`, entity: `template.2d:path-joint-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [21, 21], tint: [0.13, 0.17, 0.22, 1], transform: { position: PATH[index], rotation: 0, scale: [1, 1] } }));
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    sprites.push(sprite2d({ id: `template.2d:path-border-${index}`, entity: `template.2d:path-border-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [segment.length, 27], tint: [0.11, 0.31, 0.29, 1], transform: { position: segment.position, rotation: segment.rotation, scale: [1, 1] } }));
+  }
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    sprites.push(sprite2d({ id: `template.2d:path-${index}`, entity: `template.2d:path-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [segment.length, 20], tint: [0.13, 0.17, 0.22, 1], transform: { position: segment.position, rotation: segment.rotation, scale: [1, 1] } }));
   }
   for (let index = 0; index < PADS.length; index += 1) {
     sprites.push(sprite2d({ id: `template.2d:pad-${index}`, entity: `template.2d:pad-${index}-entity`, layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [21, 21], tint: [0.12, 0.36, 0.34, 1], transform: { position: PADS[index], rotation: Math.PI / 4, scale: [1, 1] } }));
@@ -191,4 +198,24 @@ function createMapSprites() {
   sprites.push(sprite2d({ id: "template.2d:portal", entity: "template.2d:portal-entity", layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [18, 30], tint: [0.72, 0.36, 0.96, 1], transform: { position: PATH[0], rotation: 0, scale: [1, 1] } }));
   sprites.push(sprite2d({ id: "template.2d:base", entity: "template.2d:base-entity", layer: WORLD, texture: FALLBACK_TEXTURE, material: MATERIAL, size: [24, 30], tint: [1, 0.76, 0.25, 1], transform: { position: PATH[PATH.length - 1], rotation: Math.PI / 4, scale: [1, 1] } }));
   return sprites;
+}
+
+function sampleCatmullRom(points: readonly (readonly [number, number])[], stepsPerSection: number): readonly (readonly [number, number])[] {
+  const sampled: Array<readonly [number, number]> = [];
+  for (let section = 0; section < points.length - 1; section += 1) {
+    const p0 = points[Math.max(0, section - 1)];
+    const p1 = points[section];
+    const p2 = points[section + 1];
+    const p3 = points[Math.min(points.length - 1, section + 2)];
+    for (let step = 0; step < stepsPerSection; step += 1) {
+      const t = step / stepsPerSection;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+      const y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+      sampled.push([x, y]);
+    }
+  }
+  sampled.push(points[points.length - 1]);
+  return sampled;
 }
